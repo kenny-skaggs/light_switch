@@ -1,4 +1,6 @@
+#include <ArduinoJson.h>
 #include <ESP8266WiFi.h>
+
 #include <string>
 
 
@@ -33,13 +35,31 @@ class TpLinkCipher
 class SmartBulb
 {
     public:
-    SmartBulb(const char* networkAddress) : address{networkAddress} {
-        client.connect(networkAddress, 9999);
+    SmartBulb(const char* networkAddress) : address{networkAddress} {}
+
+    void connect()
+    {
+        client.connect(address.c_str(), 9999);
     }
+
+    enum state { idle, waiting };
+    state currentState { idle };
+
     void request_sysinfo()
     {
         send_json("{\"system\": {\"get_sysinfo\": null}}");
     }
+
+    void turnOn()
+    {
+        send_json("{\"smartlife.iot.smartbulb.lightingservice\": {\"transition_light_state\": {\"on_off\": 1, \"ignore_default\": 0}}}");
+    }
+
+    void turnOff()
+    {
+        send_json("{\"smartlife.iot.smartbulb.lightingservice\": {\"transition_light_state\": {\"on_off\": 0, \"ignore_default\": 0}}}");
+    }
+
     bool isConnected()
     {
         return client.connected();
@@ -49,13 +69,29 @@ class SmartBulb
         Serial.println("closing connection");
         client.stop();
     }
+    void tick()
+    {
+        if (client.available()) {
+            read_response();
+            currentState = state::idle;
+        }
+    }
+    bool isOn()
+    {
+        return lightOn;
+    }
 
     private:
     std::string address;
     WiFiClient client;
+    bool lightOn {false};
+
+    unsigned long timeMessageSent;
 
     void send_json(std::string message)
     {
+        currentState = state::waiting;
+      
         int messageLength = message.length();
         char* encryptedData = (char*)malloc(messageLength+4);
         setMessageLength(encryptedData, messageLength);
@@ -65,35 +101,13 @@ class SmartBulb
             client.write(encryptedData[i]);
         }
         client.flush();
+        timeMessageSent = millis();
 
         free(encryptedData);
-
-        read_response();
     }
 
     void read_response()
     {
-        int retriesLeft = 5;
-        while (retriesLeft > 0) {
-            retriesLeft -= 1;
-
-            unsigned long timeout = millis();
-            while (client.available() == 0) {
-                if (millis() - timeout > 5000) {
-                    Serial.println("Client timout");
-                    break;
-                }
-            }
-
-            if (client.available()) { break; }
-        }
-
-        if (!client.available()) {
-            Serial.println("giving up");
-            client.stop();
-            delay(60000);
-        }
-
         Serial.println("reading response");
         int responseLength = readResponseLength();
         Serial.print("Length: ");
@@ -108,6 +122,17 @@ class SmartBulb
             Serial.print(decryptedResponse[i]);
         }
         Serial.println();
+
+        StaticJsonDocument<1500> document;
+        deserializeJson(document, decryptedResponse);
+
+        const char* alias = document["system"]["get_sysinfo"]["alias"];
+        Serial.print("response from ");
+        Serial.println(alias);
+        lightOn = document["system"]["get_sysinfo"]["light_state"]["on_off"];
+
+        free(response);
+        free(decryptedResponse);
     }
 
     void setMessageLength(char* output, int messageLength)

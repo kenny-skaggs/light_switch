@@ -1,3 +1,4 @@
+#include "Timer.hpp"
 
 class Button
 {
@@ -19,9 +20,9 @@ class Button
         int currentState = digitalRead(pin);
 
         if (currentState != previousState)
-            lastStateChange = millis();
+            debounceTimer.setGoalTime(millis() + debounceDelay);
 
-        if ((millis() - lastStateChange) > debounceDelay) {
+        if (debounceTimer.isGoalTimeMet()) {
             if (stablePinState != currentState) {
                 stablePinState = currentState;
 
@@ -41,8 +42,8 @@ class Button
     private:
     int pin;
     int previousState = LOW;
-    unsigned long lastStateChange = 0;
-    unsigned long debounceDelay = 50;
+    Timer debounceTimer;
+    const unsigned long debounceDelay = 50;
     bool stablePinState;
     std::function<void()> callback;
 };

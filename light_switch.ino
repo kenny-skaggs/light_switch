@@ -64,7 +64,7 @@ void loop() {
     if (state == Initializing) {
         // init wifi
         light.setState(IndicatorLight::LONG_STATE);
-        wifi.connect(ssid, password);  // credentials defined in Identifiers.h
+        wifi.connect(ssid, password);  // credentials defined in (not included) Identifiers.h
         state = WaitingForWifi;
     } else if (state == WaitingForWifi && wifi.isConnected()) {
         // connection established
